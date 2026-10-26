@@ -2198,8 +2198,12 @@ export class FigmaClient {
         ${smartPosCode}
 
         let __currentNode = 'root';
+        // Declared outside the try so the catch can clean up the partial frame
+        // and rethrow the real error (a const inside the try made the catch
+        // itself fail with "frame is not defined", hiding the cause).
+        let frame = null;
         try {
-        const frame = figma.createFrame();
+        frame = figma.createFrame();
         __currentNode = ${JSON.stringify(name)};
         frame.name = ${JSON.stringify(name)};
         frame.resize(${width}, ${height});
@@ -2259,8 +2263,8 @@ export class FigmaClient {
           ? { id: __root.id, name: __root.name, unresolved: __unresolved, layoutWarnings: __layoutWarnings, notes: __notes, summary: __summary }
           : { id: __root.id, name: __root.name, summary: __summary };
         } catch(e) {
-          frame.remove();
-          throw new Error('[Node: ' + __currentNode + '] ' + e.message);
+          if (frame) { try { frame.remove(); } catch (_) {} }
+          throw new Error('[Node: ' + __currentNode + '] ' + (e && e.message ? e.message : String(e)));
         }
       })()
     `;
