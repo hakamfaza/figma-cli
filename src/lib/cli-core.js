@@ -1,5 +1,6 @@
 // Shared CLI core: daemon plumbing, figma eval helpers, config, program.
 // Extracted from index.js — all command modules import from here.
+import { classifyDaemonError, timeoutMessage } from './timeouts.js';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -391,8 +392,15 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
     if (result.error) throw new Error(result.error);
     return result.result;
   } catch (e) {
-    if (e.name === 'TimeoutError' || e.message.includes('timeout')) {
-      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try reconnecting: node src/index.js connect`);
+    // Only the client's own abort is relabelled. A timeout reported by the
+    // daemon carries its real budget ("Execution timeout (30s)") and used to
+    // be rewritten here as this function's 90s, hiding which limit fired.
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw new Error(timeoutMessage(timeoutMs / 1000));
+    }
+    if (classifyDaemonError(e) === 'timeout') {
+      const m = e.message.match(/\((\d+)s\)/);
+      throw new Error(timeoutMessage(m ? Number(m[1]) : timeoutMs / 1000));
     }
     throw e;
   }
@@ -472,7 +480,9 @@ async function fastEval(code) {
     try {
       return await daemonExec('eval', { code });
     } catch (e) {
-      // Continue to fallback
+      // Fall back only when nothing ran. After a timeout the code may still
+      // be executing in Figma; running it again could duplicate its work.
+      if (classifyDaemonError(e) !== 'connection') throw e;
     }
   }
 
