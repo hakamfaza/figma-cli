@@ -47,6 +47,9 @@ function unescapeShell(str) {
  *  - outer is a single <Frame ...> with a flex direction
  *  - outer contains ≥ 2 direct <Frame> children (depth-aware)
  *  - all direct children are <Frame>s (no orphan <Text>, <Icon>, etc.)
+ *  - no direct child fills or grows (w="fill", h="fill", grow): those take
+ *    their size from the wrapper
+ *  - the outer is not variant-named ("prop=value"): that is a component
  *  - bg/fill on the outer is fine; the wrapper visual is dropped on purpose
  *    because the canonical pattern is "N standalone items", not "N items in a
  *    bag". Callers who really want the wrapper can pass --keep-wrapper.
@@ -116,6 +119,14 @@ function detectWrapperSplit(jsx) {
   }
   if (nonFrameChildSeen) return null;
   if (children.length < 2) return null;
+  // A variant-named outer ("Type=grid, Size=desktop") is a component being
+  // built, never "N standalone items".
+  const outerName = (outerAttrs.match(/\bname\s*=\s*"([^"]*)"/) || [])[1] || '';
+  if (outerName.includes('=')) return null;
+  // Children that fill or grow take their size from the wrapper; split out to
+  // the canvas they would have nothing to fill.
+  const openTag = (c) => (c.match(/^<Frame\b[^>]*>/) || [''])[0];
+  if (children.some((c) => /\b(?:w|h)\s*=\s*["']fill["']|\bgrow\s*=/.test(openTag(c)))) return null;
   // Don't split distinct-child composites. A real "N items in a row" pattern
   // has children that share a base name (Button 1/2/3, Card A/B/C) or are
   // structurally interchangeable. A composite has children with unrelated
